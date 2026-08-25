@@ -1,0 +1,33 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: balanceproof
+      POSTGRES_PASSWORD: balanceproof
+      POSTGRES_DB: balanceproof
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  worker:
+    build: ./apps/worker
+    ports:
+      - "8000:8000"
+
+  web:
+    build: ./apps/web
+    environment:
+      DATABASE_URL: postgresql://balanceproof:balanceproof@db:5432/balanceproof
+      WORKER_URL: http://worker:8000
+      STORAGE_DIR: /data/uploads
+    volumes:
+      - ./data:/data
+    ports:
+      - "3000:3000"
+    depends_on:
+      - db
+      - worker
+
+volumes:
+  pgdata: {}

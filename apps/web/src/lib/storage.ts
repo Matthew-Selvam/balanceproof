@@ -5,10 +5,11 @@ import path from "path";
 const STORAGE_DIR = process.env.STORAGE_DIR ?? "./data/uploads";
 
 export async function saveUpload(buffer: Buffer, originalName: string) {
-  await mkdir(STORAGE_DIR, { recursive: true });
+  const storageDir = path.resolve(STORAGE_DIR);
+  await mkdir(storageDir, { recursive: true });
   const safeName = originalName.replace(/[^\w.-]+/g, "_").slice(-80);
   const fileName = `${randomUUID()}-${safeName}`;
-  const absolutePath = path.join(STORAGE_DIR, fileName);
+  const absolutePath = path.join(storageDir, fileName);
   await writeFile(absolutePath, buffer);
   return { absolutePath, fileName };
 }

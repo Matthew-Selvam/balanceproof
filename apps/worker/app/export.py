@@ -4,7 +4,7 @@ import io
 
 def to_csv(transactions):
     buffer = io.StringIO()
-    writer = csv.writer(buffer)
+    writer = csv.writer(buffer, lineterminator="\n")
     writer.writerow(["Date", "Description", "Amount", "Balance", "Flags"])
     for t in transactions:
         writer.writerow(

@@ -32,11 +32,8 @@ def parse(pages, meta):
             post_date, _, description, amount_raw, balance_raw = match.groups()
             month = int(post_date.split("/")[0])
             day = int(post_date.split("/")[1])
-            if last_month is not None:
-                if last_month >= 11 and month <= 2:
-                    year += 1
-                elif last_month <= 2 and month >= 11:
-                    year -= 1
+            if last_month is not None and last_month >= 11 and month <= 2:
+                year += 1
             last_month = month
             txns.append(
                 Txn(
@@ -51,7 +48,7 @@ def parse(pages, meta):
 
 def _infer_year(meta):
     period = meta.get("period") or {}
-    for value in (period.get("end"), period.get("start")):
+    for value in (period.get("start"), period.get("end")):
         if not value:
             continue
         match = re.search(r"(\d{4})", value)

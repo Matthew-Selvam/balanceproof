@@ -5,3 +5,4 @@ pydantic==2.9.2
 openpyxl==3.1.5
 python-multipart==0.0.12
 pytest==8.3.3
+reportlab==4.0.4

@@ -1,10 +1,33 @@
+"""Bank parser package.
+
+The supported institution list lives in :mod:`app.banks.registry`.
+``chase`` and ``generic`` remain as thin compatibility shims over the layout
+engine so existing call sites keep working.
+"""
+
 from . import chase, generic
+from .registry import (
+    GENERIC,
+    REGISTRY,
+    BankSpec,
+    candidates,
+    detect_bank,
+    normalize,
+    parse,
+    parse_with,
+    resolve,
+)
 
-REGISTRY = [chase]
-
-
-def detect_bank(text):
-    for bank in REGISTRY:
-        if bank.matches(text):
-            return bank
-    return generic
+__all__ = [
+    "chase",
+    "generic",
+    "GENERIC",
+    "REGISTRY",
+    "BankSpec",
+    "candidates",
+    "detect_bank",
+    "normalize",
+    "parse",
+    "parse_with",
+    "resolve",
+]

@@ -1,173 +1,261 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { AlertTriangle, CheckCircle2, HelpCircle, XCircle } from "lucide-react";
 
-interface Transaction {
-  date: string;
-  description: string;
-  amount: number;
-  balance: number | null;
-  flags: string[];
-}
+import { UploadDropzone, UploadQueue } from "@/components/upload-queue";
+import { Card } from "@/components/ui/card";
+import { Spinner } from "@/components/ui/button";
+import { formatMoney } from "@/lib/format";
+import type { Summary } from "@/lib/types";
+import { useUploader } from "@/lib/use-uploader";
+import { verdictOf } from "@/lib/verdict";
 
-interface ParsedResult {
-  bank: string;
-  balances: { opening: number | null; closing: number | null };
-  transactions: Transaction[];
-  summary: {
-    count: number;
-    total: number;
-    reconciled: boolean | null;
-    difference: number | null;
-    confidence: number;
-  };
+interface BankInfo {
+  id: number | string;
+  name: string;
+  country: string;
 }
 
 export default function UploadPage() {
-  const [phase, setPhase] = useState<"idle" | "working" | "done" | "error">("idle");
-  const [error, setError] = useState<string | null>(null);
-  const [statementId, setStatementId] = useState<string | null>(null);
-  const [result, setResult] = useState<ParsedResult | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const { items, busy, start, clear, remove } = useUploader();
+  const [banks, setBanks] = useState<BankInfo[]>([]);
+  const [workerUp, setWorkerUp] = useState<boolean | null>(null);
 
-  const convert = useCallback(async (file: File) => {
-    setPhase("working");
-    setError(null);
-    setResult(null);
-    setStatementId(null);
-    const form = new FormData();
-    form.append("file", file);
-    try {
-      const res = await fetch("/api/statements", { method: "POST", body: form });
-      const body = await res.json();
-      if (!res.ok || body.error) throw new Error(body.error ?? "Upload failed");
-      setStatementId(body.id);
-      for (let attempt = 0; attempt < 90; attempt++) {
-        await new Promise((r) => setTimeout(r, 1000));
-        const poll = await (await fetch(`/api/statements/${body.id}`)).json();
-        if (poll.status === "done") {
-          setResult(poll.data);
-          setPhase("done");
-          return;
-        }
-        if (poll.status === "error") throw new Error(poll.error ?? "Conversion failed");
-      }
-      throw new Error("Timed out waiting for conversion");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      setPhase("error");
-    }
+  // Surface a dead worker before the user uploads and waits for a failure.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/banks", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((body) => {
+        if (cancelled) return;
+        setWorkerUp(Boolean(body.available));
+        setBanks(Array.isArray(body.banks) ? body.banks : []);
+      })
+      .catch(() => {
+        if (!cancelled) setWorkerUp(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const s = result?.summary;
+  const done = items.filter((i) => i.phase === "done");
+  const failed = items.filter((i) => i.phase === "error");
+
   return (
-    <main className="mx-auto max-w-3xl px-6 py-16">
-      <a href="/" className="text-sm text-neutral-500 hover:text-neutral-800">← Back</a>
-      <h1 className="mt-4 text-3xl font-semibold tracking-tight">Convert a bank statement</h1>
-      <p className="mt-2 text-neutral-600">PDF in, validated CSV out. Your data is checked row-by-row before download.</p>
+    <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6 sm:py-14">
+      <header>
+        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+          Convert a bank statement
+        </h1>
+        <p className="mt-2 max-w-2xl text-fg-muted">
+          PDF in, reconciled export out. Every statement is checked against its
+          own printed balances before you download anything.
+        </p>
+      </header>
 
-      <label
-        className={`mt-8 flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed p-12 text-center transition ${
-          phase === "idle" ? "border-neutral-300 hover:bg-white" : "border-neutral-200 bg-white"
-        }`}
-      >
-        <input
-          ref={inputRef}
-          type="file"
-          accept="application/pdf,.pdf"
-          className="hidden"
-          disabled={phase === "working"}
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) void convert(file);
-          }}
-        />
-        {phase === "working" ? (
-          <>
-            <p className="font-medium">Converting… this usually takes under a minute.</p>
-            <p className="mt-1 text-sm text-neutral-500">Parsing layout → extracting rows → validating balances.</p>
-          </>
-        ) : (
-          <>
-            <p className="font-medium">Drop your PDF here, or click to browse</p>
-            <p className="mt-1 text-sm text-neutral-500">Up to 25 MB · text-based PDFs (scans not supported yet)</p>
-          </>
-        )}
-      </label>
-
-      {phase === "error" && error && (
-        <div className="mt-6 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{error}</div>
-      )}
-
-      {phase === "done" && result && s && (
-        <div className="mt-10">
-          <div
-            className={`rounded-xl border p-4 ${
-              s.reconciled === true
-                ? "border-emerald-200 bg-emerald-50"
-                : s.reconciled === false
-                  ? "border-amber-200 bg-amber-50"
-                  : "border-neutral-200 bg-white"
-            }`}
-          >
-            <p className="font-medium">
-              {s.reconciled === true
-                ? `✓ Reconciled — opening + Σ = closing, to the penny (${s.count} transactions)`
-                : s.reconciled === false
-                  ? `⚠ Mismatch of ${s.difference} detected — review flagged rows below`
-                  : `Parsed ${s.count} transactions — statement balances not found, could not auto-reconcile`}
-            </p>
-            <p className="mt-1 text-sm text-neutral-600">
-              Bank: {result.bank} · Confidence: {Math.round(s.confidence * 100)}% · Net total: {s.total.toFixed(2)}
+      {workerUp === false ? (
+        <div
+          role="alert"
+          className="mt-6 flex items-start gap-3 rounded-card border border-broken-500/35 bg-broken-500/10 p-4"
+        >
+          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-broken-400" aria-hidden="true" />
+          <div className="text-sm">
+            <p className="font-medium text-broken-400">The parsing worker is not reachable.</p>
+            <p className="mt-1 text-fg-muted">
+              Uploads will fail until it is running. Start it with{" "}
+              <code className="rounded bg-ink-900 px-1.5 py-0.5 font-mono text-xs">
+                docker compose up worker
+              </code>{" "}
+              or run{" "}
+              <code className="rounded bg-ink-900 px-1.5 py-0.5 font-mono text-xs">
+                uvicorn app.main:app
+              </code>{" "}
+              in apps/worker.
             </p>
           </div>
-
-          {statementId && (
-            <a
-              href={`/api/statements/${statementId}/export`}
-              className="mt-4 inline-block rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700"
-            >
-              Download CSV
-            </a>
-          )}
-
-          <div className="mt-6 overflow-x-auto rounded-xl border border-neutral-200 bg-white">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-500">
-                  <th className="px-4 py-3">Date</th>
-                  <th className="px-4 py-3">Description</th>
-                  <th className="px-4 py-3 text-right">Amount</th>
-                  <th className="px-4 py-3 text-right">Balance</th>
-                  <th className="px-4 py-3">Flags</th>
-                </tr>
-              </thead>
-              <tbody>
-                {result.transactions.slice(0, 150).map((t, i) => (
-                  <tr key={i} className={`border-b border-neutral-100 ${t.flags.length ? "bg-rose-50/60" : ""}`}>
-                    <td className="whitespace-nowrap px-4 py-2 tabular-nums">{t.date}</td>
-                    <td className="max-w-xs truncate px-4 py-2">{t.description}</td>
-                    <td className={`px-4 py-2 text-right tabular-nums ${t.amount < 0 ? "text-rose-600" : ""}`}>
-                      {t.amount.toFixed(2)}
-                    </td>
-                    <td className="px-4 py-2 text-right tabular-nums">{t.balance == null ? "—" : t.balance.toFixed(2)}</td>
-                    <td className="px-4 py-2">
-                      {t.flags.length ? (
-                        <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs text-rose-700">{t.flags.join(", ")}</span>
-                      ) : (
-                        <span className="text-neutral-300">—</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {result.transactions.length > 150 && (
-            <p className="mt-2 text-sm text-neutral-500">Showing first 150 of {result.transactions.length} rows — full set included in the CSV.</p>
-          )}
         </div>
-      )}
-    </main>
+      ) : null}
+
+      <div className="mt-8">
+        <UploadDropzone onFiles={(files) => void start(files)} busy={busy} />
+      </div>
+
+      {items.length > 0 ? (
+        <section className="mt-8" aria-labelledby="queue-heading">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 id="queue-heading" className="text-sm font-semibold text-fg">
+              Queue
+              <span className="tabular ml-2 text-fg-subtle">{items.length}</span>
+            </h2>
+            {!busy ? (
+              <button
+                type="button"
+                onClick={clear}
+                className="text-xs text-fg-muted hover:text-fg"
+              >
+                Clear finished
+              </button>
+            ) : null}
+          </div>
+          <UploadQueue items={items} onRemove={remove} />
+        </section>
+      ) : null}
+
+      {done.length > 0 ? (
+        <section className="mt-10" aria-labelledby="results-heading">
+          <h2 id="results-heading" className="text-sm font-semibold text-fg">
+            Parsed statements
+          </h2>
+          <ul className="mt-3 space-y-3">
+            {done.map((item) => (
+              <li key={item.localId}>
+                <ResultCard
+                  statementId={item.statementId!}
+                  filename={item.file.name}
+                  summary={item.summary!}
+                  bankName={item.bank?.name ?? "Unknown layout"}
+                  warnings={item.warnings ?? []}
+                />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {failed.length > 0 ? (
+        <section className="mt-10" aria-labelledby="failed-heading">
+          <h2 id="failed-heading" className="text-sm font-semibold text-fg">
+            Could not be parsed
+          </h2>
+          <ul className="mt-3 space-y-2">
+            {failed.map((item) => (
+              <li key={item.localId}>
+                <Card className="border-broken-500/30">
+                  <p className="flex items-center gap-2 text-sm font-medium text-broken-400">
+                    <XCircle className="size-4" aria-hidden="true" />
+                    {item.file.name}
+                  </p>
+                  <p className="mt-1.5 text-sm text-fg-muted">{item.error}</p>
+                  {item.statementId ? (
+                    <Link
+                      href={`/statements/${item.statementId}`}
+                      className="mt-2 inline-block text-xs text-accent-400 hover:underline"
+                    >
+                      Open the record →
+                    </Link>
+                  ) : null}
+                </Card>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      <section className="mt-12" aria-labelledby="banks-heading">
+        <h2 id="banks-heading" className="text-sm font-semibold text-fg">
+          Supported institutions
+        </h2>
+        <p className="mt-1.5 text-sm text-fg-muted">
+          Bank-specific layouts are matched by keyword. Anything else falls
+          through to the generic parser, which is labelled as heuristic.
+        </p>
+        {workerUp === null ? (
+          <div className="mt-4 flex items-center gap-2 text-sm text-fg-muted">
+            <Spinner className="size-3.5" label="Loading banks" />
+            Loading the bank list…
+          </div>
+        ) : banks.length === 0 ? (
+          <p className="mt-4 text-sm text-fg-subtle">
+            The bank list is unavailable while the worker is offline.
+          </p>
+        ) : (
+          <ul className="mt-4 flex flex-wrap gap-1.5">
+            {banks.map((bank) => (
+              <li
+                key={bank.id}
+                className="rounded-pill border border-ink-600 bg-ink-800/60 px-2.5 py-1 text-xs text-fg-muted"
+              >
+                {bank.name}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function ResultCard({
+  statementId,
+  filename,
+  summary,
+  bankName,
+  warnings,
+}: {
+  statementId: string;
+  filename: string;
+  summary: Summary;
+  bankName: string;
+  warnings: string[];
+}) {
+  const verdict = verdictOf(summary);
+  const Icon =
+    verdict.id === "proven"
+      ? CheckCircle2
+      : verdict.id === "unproven"
+        ? XCircle
+        : verdict.id === "review"
+          ? AlertTriangle
+          : HelpCircle;
+
+  return (
+    <Card className={`border ${verdict.tone.border} ${verdict.tone.bg}`}>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex min-w-0 items-start gap-3">
+          <Icon className={`mt-0.5 size-5 shrink-0 ${verdict.tone.text}`} aria-hidden="true" />
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium text-fg" title={filename}>
+              {filename}
+            </p>
+            <p className={`mt-0.5 text-sm font-medium ${verdict.tone.text}`}>
+              {verdict.headline}
+            </p>
+            <p className="mt-1 text-xs text-fg-muted">
+              {bankName} · <span className="tabular">{summary.count}</span> rows ·{" "}
+              <span className="tabular">{formatMoney(summary.total)}</span> net ·{" "}
+              confidence <span className="tabular">{Math.round(summary.confidence * 100)}%</span>
+            </p>
+          </div>
+        </div>
+
+        <div className="flex shrink-0 gap-2">
+          <Link
+            href={`/statements/${statementId}`}
+            className="rounded-lg border border-ink-600 bg-ink-800 px-3 py-1.5 text-xs font-medium text-fg hover:border-ink-500"
+          >
+            Review &amp; export
+          </Link>
+          <a
+            href={`/api/statements/${statementId}/export?format=xlsx`}
+            className="rounded-lg border border-ink-600 px-3 py-1.5 text-xs font-medium text-fg-muted hover:border-ink-500 hover:text-fg"
+          >
+            Excel
+          </a>
+        </div>
+      </div>
+
+      {warnings.length > 0 ? (
+        <ul className="mt-3 space-y-1 border-t border-ink-700 pt-3">
+          {warnings.map((warning) => (
+            <li key={warning} className="text-xs text-warn-400">
+              {warning}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </Card>
   );
 }

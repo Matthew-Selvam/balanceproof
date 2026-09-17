@@ -1,3 +1,162 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   BalanceProof design tokens.
+
+   One rule: nothing in the app hardcodes a hex value. Every colour, radius and
+   shadow used in TSX comes from a token declared here, so the whole product
+   can be re-skinned from this block alone.
+
+   The palette is deliberately dark and low-chroma so the *status* colours
+   (proven / warning / broken) are the only saturated things on screen. The
+   product's whole claim is "we can prove this is right", so green has to mean
+   something.
+--------------------------------------------------------------------------- */
+@theme {
+  /* surfaces, darkest to lightest */
+  --color-ink-950: #070a12;
+  --color-ink-900: #0b0f1a;
+  --color-ink-850: #0f1422;
+  --color-ink-800: #141a2b;
+  --color-ink-700: #1c2438;
+  --color-ink-600: #273049;
+  --color-ink-500: #38425f;
+
+  /* text */
+  --color-fg: #f2f5fb;
+  --color-fg-muted: #a7b0c6;
+  --color-fg-subtle: #6f7a94;
+
+  /* status: proven */
+  --color-proof-50: #052e21;
+  --color-proof-400: #34d99b;
+  --color-proof-500: #10b981;
+  --color-proof-600: #059669;
+
+  /* status: warning */
+  --color-warn-50: #3a2a08;
+  --color-warn-400: #fbbf24;
+  --color-warn-500: #f59e0b;
+
+  /* status: broken */
+  --color-broken-50: #3d1119;
+  --color-broken-400: #fb7185;
+  --color-broken-500: #f43f5e;
+
+  /* brand accent */
+  --color-accent-400: #60a5fa;
+  --color-accent-500: #3b82f6;
+  --color-accent-600: #2563eb;
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-mono-jet), ui-monospace, "SF Mono", Menlo, monospace;
+
+  --radius-card: 1rem;
+  --radius-pill: 999px;
+
+  --shadow-lift: 0 1px 2px rgb(0 0 0 / 0.4), 0 12px 32px -12px rgb(0 0 0 / 0.55);
+  --shadow-glow-proof: 0 0 0 1px rgb(16 185 129 / 0.35), 0 12px 40px -16px rgb(16 185 129 / 0.45);
+
+  --animate-shimmer: shimmer 2.4s linear infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-ink-950);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    /* The page is dark; a faint radial keeps it from looking flat black. */
+    background-image:
+      radial-gradient(60rem 40rem at 15% -10%, rgb(59 130 246 / 0.10), transparent 60%),
+      radial-gradient(50rem 34rem at 90% 0%, rgb(16 185 129 / 0.08), transparent 55%);
+    background-repeat: no-repeat;
+  }
+
+  /* Numbers must line up in columns — this is a reconciliation product. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  ::selection {
+    background-color: rgb(59 130 246 / 0.35);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent-400);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: var(--color-ink-900); }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-ink-600);
+    border-radius: 999px;
+    border: 2px solid var(--color-ink-900);
+  }
+  ::-webkit-scrollbar-thumb:hover { background: var(--color-ink-500); }
+}
+
+@utility panel {
+  background-color: color-mix(in oklab, var(--color-ink-850) 88%, transparent);
+  border: 1px solid var(--color-ink-700);
+  border-radius: var(--radius-card);
+}
+
+@utility panel-raised {
+  background-color: var(--color-ink-800);
+  border: 1px solid var(--color-ink-600);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-lift);
+}
+
+/* Screen-reader-only content that still receives focus. */
+@utility sr-only-focusable {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-ink-800) 25%,
+    var(--color-ink-700) 50%,
+    var(--color-ink-800) 75%
+  );
+  background-size: 200% 100%;
+  animation: var(--animate-shimmer);
+}
+
+.animate-rise {
+  animation: rise 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

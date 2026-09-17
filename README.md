@@ -54,3 +54,4 @@ cd apps/web && npm install && npm run dev
 - [ ] Batch/ZIP upload, client folders (Firm tier)
 - [ ] Stripe credits + subscriptions ($9 pack / $19 Starter / $39 Pro / $79 Firm)
 - [ ] Programmatic SEO pages (`/{bank}-bank-statement-to-excel` × top 200 banks)
+# BalanceProof Improvements

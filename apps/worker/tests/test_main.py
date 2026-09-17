@@ -198,7 +198,9 @@ class TestJobStore:
             t.join()
 
         assert len(results) == 10
-        assert all(r["filename"] == f"job{i}.pdf" for i, r in enumerate(results))
+        # Just verify all filenames exist, order is non-deterministic
+        filenames = [r["filename"] for r in results]
+        assert all(f"job{i}.pdf" in filenames for i in range(10))
 
     def test_evicts_stale_jobs(self, monkeypatch):
         """Older than TTL are cleaned up."""
@@ -207,9 +209,14 @@ class TestJobStore:
         job_id = store.create("test.pdf")
         assert store.get(job_id) is not None
 
-        # Monkeypatch time to simulate old jobs
+        # Monkeypatch time to simulate old jobs (use a counter to avoid recursion)
         import time as time_module
-        monkeypatch.setattr(time_module, "time", lambda: time_module.time() + 7200)
+        _original_time = time_module.time
+        _call_count = [0]
+        def mock_time():
+            _call_count[0] += 1
+            return _original_time() + 25200  # 7 hours > TTL of 6 hours
+        monkeypatch.setattr(time_module, "time", mock_time)
 
         # Trigger eviction
         store._evict()
